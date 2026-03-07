@@ -73,6 +73,8 @@
         }
         .btn-in  { background: #2ecc71; color: white; }
         .btn-out { background: #e74c3c; color: white; }
+        .btn-in:disabled, .btn-out:disabled { opacity: 0.6; cursor: not-allowed; }
+
         .thongbao {
             margin-top: 14px;
             padding: 12px;
@@ -80,6 +82,7 @@
             text-align: center;
             display: none;
             font-size: 15px;
+            white-space: pre-line;
         }
 
         .report-header {
@@ -173,7 +176,6 @@
     <div class="tab" onclick="showTab('report', this)">📊 Báo Cáo</div>
 </div>
 
-<!-- CHECKIN PAGE -->
 <div id="page-checkin" class="page active">
     <div class="checkin-box">
         <h2>📋 Điểm Danh Hôm Nay</h2>
@@ -186,14 +188,13 @@
         <div class="ca-info" id="caInfo" style="display:none"></div>
 
         <div class="btn-row">
-            <button class="btn btn-in"  onclick="chamCong('in')">✅ Check-in</button>
-            <button class="btn btn-out" onclick="chamCong('out')">🚪 Check-out</button>
+            <button class="btn btn-in"  id="btnIn"  onclick="chamCong('in')">✅ Check-in</button>
+            <button class="btn btn-out" id="btnOut" onclick="chamCong('out')">🚪 Check-out</button>
         </div>
         <div class="thongbao" id="thongbao"></div>
     </div>
 </div>
 
-<!-- REPORT PAGE -->
 <div id="page-report" class="page">
     <div class="report-header">
         <strong>📅 Chọn ngày:</strong>
@@ -225,6 +226,8 @@
 </div>
 
 <script>
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycbyuJk_YAwA6FqUMyS5RemQ1tOABdYZJWTaFEMy17FeEh4psfcFumCGJe11Rb8xb7sCL/exec';
+
 const danhSachNV = [
     { ten: "Tien Trinh",         ca: 2 },
     { ten: "Hoang Pham",         ca: 2 },
@@ -294,28 +297,64 @@ function chamCong(loai) {
     const now = new Date();
     const ngay = now.toISOString().split('T')[0];
     const gio = now.toLocaleTimeString('vi-VN');
+    const timestamp = now.toLocaleString('vi-VN');
 
     if (!lichSu[ngay]) lichSu[ngay] = {};
     if (!lichSu[ngay][nv.ten]) lichSu[ngay][nv.ten] = { ca: nv.ca };
 
+    let status = '';
+
     if (loai === 'in') {
-        lichSu[ngay][nv.ten].gioVao = gio;
         const [h, m] = ca.vao.split(':').map(Number);
         const muon = now.getHours() * 60 + now.getMinutes() > h * 60 + m;
+        lichSu[ngay][nv.ten].gioVao = gio;
         lichSu[ngay][nv.ten].muon = muon;
-        hienThongBao(
-            `✅ ${nv.ten} check-in lúc ${gio} — ${muon ? '⚠️ Đi muộn' : '✅ Đúng giờ'}`,
-            muon ? '#fff3cd' : '#d4edda'
-        );
+        status = muon ? 'Late' : 'On Time';
     } else {
         if (!lichSu[ngay][nv.ten].gioVao) {
             hienThongBao('⚠️ ' + nv.ten + ' chưa check-in hôm nay!', '#fff3cd'); return;
         }
         lichSu[ngay][nv.ten].gioRa = gio;
-        hienThongBao(`🚪 ${nv.ten} check-out lúc ${gio}`, '#f8d7da');
+        status = 'Checked Out';
     }
 
     localStorage.setItem('chamcong_tpct', JSON.stringify(lichSu));
+
+    hienThongBao('⏳ Đang lưu...', '#eaf4ff');
+    document.getElementById('btnIn').disabled = true;
+    document.getElementById('btnOut').disabled = true;
+
+    fetch(SHEET_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            timestamp: timestamp,
+            name: nv.ten,
+            shift: ca.ten,
+            type: loai === 'in' ? 'Check-in' : 'Check-out',
+            time: gio,
+            status: status
+        })
+    })
+    .then(() => {
+        if (loai === 'in') {
+            const muon = lichSu[ngay][nv.ten].muon;
+            hienThongBao(
+                `✅ ${nv.ten} check-in lúc ${gio}\n${muon ? '⚠️ Đi muộn' : '✅ Đúng giờ'} — Đã lưu vào Google Sheets! 📊`,
+                muon ? '#fff3cd' : '#d4edda'
+            );
+        } else {
+            hienThongBao(`🚪 ${nv.ten} check-out lúc ${gio}\n✅ Đã lưu vào Google Sheets! 📊`, '#f8d7da');
+        }
+    })
+    .catch(() => {
+        hienThongBao('⚠️ Không thể lưu, kiểm tra kết nối mạng!', '#f8d7da');
+    })
+    .finally(() => {
+        document.getElementById('btnIn').disabled = false;
+        document.getElementById('btnOut').disabled = false;
+    });
 }
 
 function hienThongBao(text, bg) {
@@ -337,7 +376,6 @@ function xemBaoCao() {
         const record = data[nv.ten];
         const ca = CA[nv.ca];
         const tr = document.createElement('tr');
-
         let gioVao = '—', gioRa = '—', badge = '';
 
         if (!record || !record.gioVao) {
