@@ -45,14 +45,53 @@
             box-shadow: 0 2px 10px rgba(0,0,0,0.08);
         }
         .checkin-box h2 { text-align: center; color: #2c3e50; margin-bottom: 20px; }
-        select, input {
+
+        .input-wrap { position: relative; margin: 8px 0; }
+        input[type="text"] {
             width: 100%;
             padding: 11px 14px;
-            margin: 8px 0;
             border: 1px solid #ddd;
             border-radius: 8px;
             font-size: 15px;
         }
+        input[type="text"]:focus { outline: none; border-color: #2c3e50; }
+
+        /* Autocomplete dropdown */
+        .autocomplete-list {
+            position: absolute;
+            top: 100%;
+            left: 0; right: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            max-height: 220px;
+            overflow-y: auto;
+            z-index: 999;
+            display: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .autocomplete-item {
+            padding: 10px 14px;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .autocomplete-item:hover { background: #f0f2f5; }
+        .autocomplete-item .shift-tag {
+            font-size: 12px;
+            background: #e3f2fd;
+            color: #1565c0;
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+        .autocomplete-item.shift3 .shift-tag {
+            background: #f3e5f5;
+            color: #6a1b9a;
+        }
+
         .ca-info {
             background: #eaf4ff;
             border-radius: 8px;
@@ -60,7 +99,9 @@
             margin: 8px 0;
             font-size: 14px;
             color: #2980b9;
+            display: none;
         }
+
         .btn-row { display: flex; gap: 10px; margin-top: 14px; }
         .btn {
             flex: 1;
@@ -85,6 +126,7 @@
             white-space: pre-line;
         }
 
+        /* REPORT */
         .report-header {
             display: flex;
             align-items: center;
@@ -92,7 +134,12 @@
             margin-bottom: 20px;
             flex-wrap: wrap;
         }
-        .report-header input[type="date"] { width: auto; margin: 0; }
+        input[type="date"] {
+            padding: 10px 14px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 15px;
+        }
         .btn-filter {
             padding: 10px 20px;
             background: #2c3e50;
@@ -176,16 +223,18 @@
     <div class="tab" onclick="showTab('report', this)">📊 Báo Cáo</div>
 </div>
 
+<!-- CHECKIN PAGE -->
 <div id="page-checkin" class="page active">
     <div class="checkin-box">
         <h2>📋 Điểm Danh Hôm Nay</h2>
         <div id="ngay-hom-nay" style="text-align:center;color:#888;margin-bottom:16px;font-size:14px;"></div>
 
-        <select id="chonNhanVien" onchange="hienThiCa()">
-            <option value="">-- Chọn tên nhân viên --</option>
-        </select>
+        <div class="input-wrap">
+            <input type="text" id="inputTen" placeholder="Nhập tên của bạn..." autocomplete="off" oninput="goiY()" onkeydown="xuLyPhim(event)">
+            <div class="autocomplete-list" id="goiYList"></div>
+        </div>
 
-        <div class="ca-info" id="caInfo" style="display:none"></div>
+        <div class="ca-info" id="caInfo"></div>
 
         <div class="btn-row">
             <button class="btn btn-in"  id="btnIn"  onclick="chamCong('in')">✅ Check-in</button>
@@ -195,6 +244,7 @@
     </div>
 </div>
 
+<!-- REPORT PAGE -->
 <div id="page-report" class="page">
     <div class="report-header">
         <strong>📅 Chọn ngày:</strong>
@@ -259,7 +309,9 @@ const CA = {
     3: { ten: "Shift 3", vao: "09:00", ra: "18:00" },
 };
 
+let nvDaChon = null;
 let lichSu = JSON.parse(localStorage.getItem('chamcong_tpct') || '{}');
+let selectedIndex = -1;
 
 window.onload = function() {
     const hômnay = new Date();
@@ -267,32 +319,80 @@ window.onload = function() {
         'Hôm nay: ' + hômnay.toLocaleDateString('vi-VN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     document.getElementById('ngayBaoCao').value = hômnay.toISOString().split('T')[0];
 
-    const sel = document.getElementById('chonNhanVien');
-    danhSachNV.forEach((nv, i) => {
-        const opt = document.createElement('option');
-        opt.value = i;
-        opt.text = nv.ten + ' — Shift ' + nv.ca;
-        sel.appendChild(opt);
+    // Ẩn gợi ý khi click ra ngoài
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.input-wrap')) {
+            document.getElementById('goiYList').style.display = 'none';
+        }
     });
 };
 
-function hienThiCa() {
-    const idx = document.getElementById('chonNhanVien').value;
-    const caInfo = document.getElementById('caInfo');
-    if (idx === '') { caInfo.style.display = 'none'; return; }
-    const nv = danhSachNV[idx];
-    const ca = CA[nv.ca];
-    caInfo.style.display = 'block';
-    caInfo.innerHTML = `🕐 <strong>${ca.ten}</strong>: ${ca.vao} – ${ca.ra}`;
+// =====================
+// GỢI Ý TÊN
+// =====================
+function goiY() {
+    const val = document.getElementById('inputTen').value.trim().toLowerCase();
+    const list = document.getElementById('goiYList');
+    nvDaChon = null;
+    document.getElementById('caInfo').style.display = 'none';
+    selectedIndex = -1;
+
+    if (val.length < 1) { list.style.display = 'none'; return; }
+
+    const ketQua = danhSachNV.filter(nv => nv.ten.toLowerCase().includes(val));
+    if (ketQua.length === 0) { list.style.display = 'none'; return; }
+
+    list.innerHTML = '';
+    ketQua.forEach((nv, i) => {
+        const item = document.createElement('div');
+        item.className = 'autocomplete-item' + (nv.ca === 3 ? ' shift3' : '');
+        item.innerHTML = `<span>${nv.ten}</span><span class="shift-tag">Shift ${nv.ca}</span>`;
+        item.onclick = () => chonNV(nv);
+        list.appendChild(item);
+    });
+    list.style.display = 'block';
 }
 
+function xuLyPhim(e) {
+    const list = document.getElementById('goiYList');
+    const items = list.querySelectorAll('.autocomplete-item');
+    if (e.key === 'ArrowDown') {
+        selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+        items.forEach((el, i) => el.style.background = i === selectedIndex ? '#f0f2f5' : '');
+    } else if (e.key === 'ArrowUp') {
+        selectedIndex = Math.max(selectedIndex - 1, 0);
+        items.forEach((el, i) => el.style.background = i === selectedIndex ? '#f0f2f5' : '');
+    } else if (e.key === 'Enter' && selectedIndex >= 0) {
+        const tenChon = danhSachNV.filter(nv =>
+            nv.ten.toLowerCase().includes(document.getElementById('inputTen').value.trim().toLowerCase())
+        )[selectedIndex];
+        if (tenChon) chonNV(tenChon);
+    }
+}
+
+function chonNV(nv) {
+    nvDaChon = nv;
+    document.getElementById('inputTen').value = nv.ten;
+    document.getElementById('goiYList').style.display = 'none';
+    const ca = CA[nv.ca];
+    const caInfo = document.getElementById('caInfo');
+    caInfo.style.display = 'block';
+    caInfo.innerHTML = `👤 <strong>${nv.ten}</strong> &nbsp;|&nbsp; 🕐 <strong>${ca.ten}</strong>: ${ca.vao} – ${ca.ra}`;
+}
+
+// =====================
+// CHẤM CÔNG
+// =====================
 function chamCong(loai) {
-    const idx = document.getElementById('chonNhanVien').value;
-    if (idx === '') {
-        hienThongBao('⚠️ Vui lòng chọn tên nhân viên!', '#fff3cd'); return;
+    if (!nvDaChon) {
+        // Thử tìm tên khớp chính xác
+        const ten = document.getElementById('inputTen').value.trim();
+        const tim = danhSachNV.find(nv => nv.ten.toLowerCase() === ten.toLowerCase());
+        if (tim) { chonNV(tim); }
+        else { hienThongBao('⚠️ Tên không tìm thấy! Vui lòng chọn từ gợi ý.', '#fff3cd'); return; }
     }
 
-    const nv = danhSachNV[idx];
+    const nv = nvDaChon;
     const ca = CA[nv.ca];
     const now = new Date();
     const ngay = now.toISOString().split('T')[0];
@@ -319,7 +419,6 @@ function chamCong(loai) {
     }
 
     localStorage.setItem('chamcong_tpct', JSON.stringify(lichSu));
-
     hienThongBao('⏳ Đang lưu...', '#eaf4ff');
     document.getElementById('btnIn').disabled = true;
     document.getElementById('btnOut').disabled = true;
@@ -329,12 +428,10 @@ function chamCong(loai) {
         mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            timestamp: timestamp,
-            name: nv.ten,
+            timestamp, name: nv.ten,
             shift: ca.ten,
             type: loai === 'in' ? 'Check-in' : 'Check-out',
-            time: gio,
-            status: status
+            time: gio, status
         })
     })
     .then(() => {
@@ -347,10 +444,12 @@ function chamCong(loai) {
         } else {
             hienThongBao(`🚪 ${nv.ten} check-out lúc ${gio}\n✅ Đã lưu vào Google Sheets! 📊`, '#f8d7da');
         }
+        // Reset
+        document.getElementById('inputTen').value = '';
+        document.getElementById('caInfo').style.display = 'none';
+        nvDaChon = null;
     })
-    .catch(() => {
-        hienThongBao('⚠️ Không thể lưu, kiểm tra kết nối mạng!', '#f8d7da');
-    })
+    .catch(() => hienThongBao('⚠️ Không thể lưu, kiểm tra kết nối mạng!', '#f8d7da'))
     .finally(() => {
         document.getElementById('btnIn').disabled = false;
         document.getElementById('btnOut').disabled = false;
@@ -364,12 +463,14 @@ function hienThongBao(text, bg) {
     tb.innerText = text;
 }
 
+// =====================
+// BÁO CÁO
+// =====================
 function xemBaoCao() {
     const ngay = document.getElementById('ngayBaoCao').value;
     const data = lichSu[ngay] || {};
     const tbody = document.getElementById('bangBaoCao');
     tbody.innerHTML = '';
-
     let soUng = 0, soMuon = 0, soVang = 0;
 
     danhSachNV.forEach((nv, i) => {
