@@ -285,9 +285,9 @@ window.onload = function() {
             const urlParams = new URLSearchParams(window.location.search);
             const pinTuURL = urlParams.get('pin');
             if (pinTuURL) {
-                // Có PIN trong URL → tự động xác nhận
+                // Có PIN trong URL → tự động xác nhận và ẩn ô nhập PIN
                 document.getElementById('pinInput').value = pinTuURL.toUpperCase();
-                document.getElementById('pinSection').style.display = 'block';
+                document.getElementById('pinSection').style.display = 'none';
                 xacNhanPIN();
             } else {
                 // Không có PIN → hiện ô nhập bình thường
