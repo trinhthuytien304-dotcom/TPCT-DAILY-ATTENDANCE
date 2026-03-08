@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <title>Chấm Công - TPCT Team</title>
+    <title>Attendance - TPCT Control Tower</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: Arial, sans-serif; background: #f0f2f5; }
@@ -159,7 +159,7 @@
 
 <div class="header">
     <span style="font-size:24px">⏰</span>
-    <h1>Chấm Công - TPCT Control Tower</h1>
+    <h1>Attendance - TPCT Control Tower</h1>
 </div>
 
 <div class="tabs">
@@ -280,7 +280,19 @@ window.onload = function() {
         .then(data => {
             danhSachNV = data;
             document.getElementById('loading-nv').style.display = 'none';
-            document.getElementById('pinSection').style.display = 'block';
+
+            // Kiểm tra PIN trong URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const pinTuURL = urlParams.get('pin');
+            if (pinTuURL) {
+                // Có PIN trong URL → tự động xác nhận
+                document.getElementById('pinInput').value = pinTuURL.toUpperCase();
+                document.getElementById('pinSection').style.display = 'block';
+                xacNhanPIN();
+            } else {
+                // Không có PIN → hiện ô nhập bình thường
+                document.getElementById('pinSection').style.display = 'block';
+            }
         })
         .catch(() => {
             document.getElementById('loading-nv').innerText = '⚠️ Không tải được dữ liệu. Vui lòng reload trang!';
@@ -330,6 +342,16 @@ function chamCong(loai) {
 
     if (!lichSu[ngay]) lichSu[ngay] = {};
     if (!lichSu[ngay][nv.ten]) lichSu[ngay][nv.ten] = { ca: nv.ca };
+
+    // Giới hạn 1 lần check-in và 1 lần check-out mỗi ngày
+    if (loai === 'in' && lichSu[ngay][nv.ten].gioVao) {
+        hienThongBao(`⚠️ ${nv.ten} đã check-in hôm nay lúc ${lichSu[ngay][nv.ten].gioVao}!`, '#fff3cd');
+        return;
+    }
+    if (loai === 'out' && lichSu[ngay][nv.ten].gioRa) {
+        hienThongBao(`⚠️ ${nv.ten} đã check-out hôm nay lúc ${lichSu[ngay][nv.ten].gioRa}!`, '#fff3cd');
+        return;
+    }
 
     let status = '';
     if (loai === 'in') {
